@@ -2,13 +2,15 @@ import os
 import json
 import hashlib
 import gspread
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import google.generativeai as genai
 from datetime import datetime
 from fastapi.responses import FileResponse
+
+
 
 # Load environment variables
 load_dotenv()
@@ -17,29 +19,44 @@ load_dotenv()
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 model = genai.GenerativeModel("gemini-1.5-flash")
 
-# 2. Configure Google Sheets
-# 2. Configure Google Sheets
-sheet = None
+# 2. Configure Google Sheets (Drive Database)
+users_sheet = None
+chat_sheet = None
+
 try:
     google_creds_json = os.getenv("GOOGLE_CREDENTIALS")
     if google_creds_json:
         creds_dict = json.loads(google_creds_json)
         gc = gspread.service_account_from_dict(creds_dict)
-        sheet = gc.open("MyLoginDatabase").sheet1
-        print("Successfully connected to Google Sheets!")
+        doc = gc.open("MyLoginDatabase")
+
+        # Get or create 'Users' Worksheet
+        try:
+            users_sheet = doc.worksheet("Users")
+        except Exception:
+            users_sheet = doc.sheet1
+            users_sheet.update_title("Users")
+        
+        if not users_sheet.get_all_values():
+            users_sheet.append_row(["Timestamp", "Username", "PasswordHash"])
+
+        # Get or create 'ChatLogs' Worksheet
+        try:
+            chat_sheet = doc.worksheet("ChatLogs")
+        except Exception:
+            chat_sheet = doc.add_worksheet(title="ChatLogs", rows="1000", cols="4")
+            chat_sheet.append_row(["Timestamp", "Username", "UserMessage", "BotResponse"])
+
+        print("Successfully connected to Google Sheets database!")
     else:
         print("Warning: GOOGLE_CREDENTIALS environment variable missing.")
 except Exception as e:
     print(f"Failed to connect to Google Sheets: {e}")
-    # Print the full error details if Google returns an HTTP response object
-    if hasattr(e, 'response') and hasattr(e.response, 'text'):
-        print(f"Google API Error Details: {e.response.text}")
-    sheet = None
 
-# 3. Initialize FastAPI
+# 3. Initialize FastAPI App
 app = FastAPI()
 
-# Enable CORS for Vercel
+# Enable CORS for Vercel Frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -52,7 +69,10 @@ class AuthRequest(BaseModel):
     username: str
     password: str
 
-# Helper function to hash passwords securely
+class ChatRequest(BaseModel):
+    username: str
+    message: str
+
 def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
 
@@ -64,53 +84,37 @@ def serve_home():
 @app.get("/api/health")
 def health_check():
     return {"status": "ok", "message": "Backend API is online!"}
-# --- SIGNUP ENDPOINT ---
+
+# --- SIGNUP ---
 @app.post("/signup")
 def process_signup(request: AuthRequest):
-    if not sheet:
+    if not users_sheet:
         raise HTTPException(status_code=500, detail="Database connection offline.")
 
     username = request.username.strip().lower()
     if not username or not request.password:
         raise HTTPException(status_code=400, detail="Username and password are required.")
 
-    # Fetch all existing rows from Google Sheet
-    all_rows = sheet.get_all_values()
-    
-    # If sheet is brand new, add headers
-    if not all_rows:
-        sheet.append_row(["Timestamp", "Username", "PasswordHash"])
-        all_rows = [["Timestamp", "Username", "PasswordHash"]]
-
-    # Check if username already exists (Column Index 1 is Username)
-    for row in all_rows[1:]:  # Skip header row
+    all_rows = users_sheet.get_all_values()
+    for row in all_rows[1:]:
         if len(row) > 1 and row[1].strip().lower() == username:
-            raise HTTPException(
-                status_code=400, 
-                detail="Username already registered! Please switch to Login."
-            )
+            raise HTTPException(status_code=400, detail="Username already exists! Switch to Sign In.")
 
-    # Save new user credentials to Google Drive/Sheet
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     hashed_pwd = hash_password(request.password)
-    
-    try:
-        sheet.append_row([timestamp, username, hashed_pwd])
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save data to Drive: {e}")
+    users_sheet.append_row([timestamp, username, hashed_pwd])
 
-    return {"message": "Account created successfully! You can now Log In."}
+    return {"message": "Account created successfully! Please Sign In."}
 
-# --- LOGIN ENDPOINT ---
+# --- LOGIN ---
 @app.post("/login")
 def process_login(request: AuthRequest):
-    if not sheet:
+    if not users_sheet:
         raise HTTPException(status_code=500, detail="Database connection offline.")
 
     username = request.username.strip().lower()
-    all_rows = sheet.get_all_values()
+    all_rows = users_sheet.get_all_values()
 
-    # Find user in Google Sheet
     user_row = None
     for row in all_rows[1:]:
         if len(row) > 1 and row[1].strip().lower() == username:
@@ -118,23 +122,37 @@ def process_login(request: AuthRequest):
             break
 
     if not user_row:
-        raise HTTPException(
-            status_code=404, 
-            detail="User not found! Please Sign Up first."
-        )
+        raise HTTPException(status_code=404, detail="User not found! Please Sign Up first.")
 
-    # Validate Password
     input_pwd_hash = hash_password(request.password)
     stored_pwd_hash = user_row[2] if len(user_row) > 2 else ""
 
     if input_pwd_hash != stored_pwd_hash:
         raise HTTPException(status_code=401, detail="Incorrect password. Try again.")
 
-    # Generate custom greeting with Gemini AI
-    prompt = f"Write a 1-sentence funny welcome back message for a user named {request.username}."
-    try:
-        ai_response = model.generate_content(prompt).text
-    except Exception:
-        ai_response = f"Welcome back, {request.username}!"
+    return {"message": "Login successful!", "username": username}
 
-    return {"message": ai_response}
+# --- CHATBOT & DRIVE SAVING ---
+@app.post("/chat")
+def process_chat(request: ChatRequest):
+    username = request.username.strip().lower()
+    user_msg = request.message.strip()
+
+    if not user_msg:
+        raise HTTPException(status_code=400, detail="Message cannot be empty.")
+
+    # 1. Get response from Gemini AI
+    try:
+        ai_response = model.generate_content(user_msg).text
+    except Exception as e:
+        ai_response = f"Sorry, Gemini AI encountered an error: {str(e)}"
+
+    # 2. Save conversation log to Google Drive (ChatLogs sheet)
+    if chat_sheet:
+        try:
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            chat_sheet.append_row([timestamp, username, user_msg, ai_response])
+        except Exception as e:
+            print(f"Failed to save chat log to Google Drive: {e}")
+
+    return {"response": ai_response}
