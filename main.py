@@ -18,6 +18,7 @@ genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 model = genai.GenerativeModel("gemini-1.5-flash")
 
 # 2. Configure Google Sheets
+# 2. Configure Google Sheets
 sheet = None
 try:
     google_creds_json = os.getenv("GOOGLE_CREDENTIALS")
@@ -25,10 +26,15 @@ try:
         creds_dict = json.loads(google_creds_json)
         gc = gspread.service_account_from_dict(creds_dict)
         sheet = gc.open("MyLoginDatabase").sheet1
+        print("Successfully connected to Google Sheets!")
     else:
         print("Warning: GOOGLE_CREDENTIALS environment variable missing.")
 except Exception as e:
     print(f"Failed to connect to Google Sheets: {e}")
+    # Print the full error details if Google returns an HTTP response object
+    if hasattr(e, 'response') and hasattr(e.response, 'text'):
+        print(f"Google API Error Details: {e.response.text}")
+    sheet = None
 
 # 3. Initialize FastAPI
 app = FastAPI()
