@@ -46,7 +46,7 @@ class LoginRequest(BaseModel):
 
 @app.get("/")
 def health_check():
-    return {"status": "ok", "message": "Backend API is online!"}
+    return File{"index.html"}
 
 @app.post("/login")
 def process_login(request: LoginRequest):
