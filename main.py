@@ -53,6 +53,11 @@ def hash_password(password: str) -> str:
 @app.get("/")
 def serve_home():
     return FileResponse("index.html")
+
+# Create a separate route for API health checks
+@app.get("/api/health")
+def health_check():
+    return {"status": "ok", "message": "Backend API is online!"}
 # --- SIGNUP ENDPOINT ---
 @app.post("/signup")
 def process_signup(request: AuthRequest):
