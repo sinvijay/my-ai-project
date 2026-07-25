@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 import google.generativeai as genai
 from datetime import datetime
+from fastapi.responses import FileResponse
 
 # Load environment variables
 load_dotenv()
@@ -50,9 +51,8 @@ def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
 
 @app.get("/")
-def health_check():
-    return {"status": "ok", "message": "Backend API is online!"}
-
+def serve_home():
+    return FileResponse("index.html")
 # --- SIGNUP ENDPOINT ---
 @app.post("/signup")
 def process_signup(request: AuthRequest):
