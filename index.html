@@ -67,26 +67,33 @@
         const BACKEND_URL = "my-ai-project-production-bce0.up.railway.app";
 
         document.getElementById("loginForm").addEventListener("submit", async (e) => {
-            e.preventDefault();
-            const messageBox = document.getElementById("response-message");
-            messageBox.innerText = "Connecting to Gemini...";
+    e.preventDefault();
+    const messageBox = document.getElementById("response-message");
+    messageBox.innerText = "Connecting to Gemini...";
 
-            try {
-                const res = await fetch(`${BACKEND_URL}/login`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        username: document.getElementById("username").value,
-                        password: document.getElementById("password").value
-                    })
-                });
-
-                const data = await res.json();
-                messageBox.innerText = data.message;
-            } catch (err) {
-                messageBox.innerText = "Error contacting backend API.";
-            }
+    try {
+        const res = await fetch(`${BACKEND_URL}/login`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                username: document.getElementById("username").value,
+                password: document.getElementById("password").value
+            })
         });
+
+        const data = await res.json();
+
+        if (res.ok) {
+            // Success response from backend
+            messageBox.innerText = data.message || "Success!";
+        } else {
+            // FastAPI Error (e.g. 422, 500)
+            messageBox.innerText = data.detail || `Server Error (${res.status})`;
+        }
+    } catch (err) {
+        messageBox.innerText = "Error contacting backend API.";
+    }
+});
     </script>
 </body>
 </html>
