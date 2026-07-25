@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Login Application</title>
+    <title>AI Auth System</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -19,22 +19,41 @@
             background: #1e293b;
             padding: 30px;
             border-radius: 12px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.4);
             width: 320px;
             text-align: center;
+        }
+        .tabs {
+            display: flex;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #334155;
+        }
+        .tab-btn {
+            flex: 1;
+            padding: 10px;
+            background: none;
+            border: none;
+            color: #94a3b8;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .tab-btn.active {
+            color: #38bdf8;
+            border-bottom: 2px solid #38bdf8;
         }
         input {
             width: 90%;
             padding: 12px;
-            margin: 10px 0;
+            margin: 8px 0;
             border: 1px solid #334155;
             background: #0f172a;
             color: white;
             border-radius: 6px;
         }
-        button {
+        button.submit-btn {
             width: 98%;
             padding: 12px;
+            margin-top: 10px;
             background: #3b82f6;
             color: white;
             border: none;
@@ -42,58 +61,85 @@
             cursor: pointer;
             font-weight: bold;
         }
-        button:hover { background: #2563eb; }
+        button.submit-btn:hover { background: #2563eb; }
         #response-message {
             margin-top: 15px;
             font-size: 0.9em;
             color: #38bdf8;
+            min-height: 20px;
         }
     </style>
 </head>
 <body>
 
     <div class="card">
-        <h2>Sign In</h2>
-        <form id="loginForm">
+        <div class="tabs">
+            <button class="tab-btn active" id="loginTab" onclick="switchMode('login')">Sign In</button>
+            <button class="tab-btn" id="signupTab" onclick="switchMode('signup')">Sign Up</button>
+        </div>
+
+        <form id="authForm">
             <input type="text" id="username" placeholder="Username" required>
             <input type="password" id="password" placeholder="Password" required>
-            <button type="submit">Submit</button>
+            <button type="submit" class="submit-btn" id="submitBtn">Sign In</button>
         </form>
+
         <div id="response-message"></div>
     </div>
 
     <script>
-        // ⚠️ REPLACE THIS with your deployed Railway domain (e.g. "https://my-app.up.railway.app")
-        const BACKEND_URL = "my-ai-project-production-bce0.up.railway.app";
+        // ⚠️ Paste your actual Railway backend URL here (No trailing slash)
+        const BACKEND_URL = "https://your-app-production.up.railway.app";
 
-        document.getElementById("loginForm").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const messageBox = document.getElementById("response-message");
-    messageBox.innerText = "Connecting to Gemini...";
+        let currentMode = "login";
 
-    try {
-        const res = await fetch(`${BACKEND_URL}/login`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                username: document.getElementById("username").value,
-                password: document.getElementById("password").value
-            })
-        });
+        function switchMode(mode) {
+            currentMode = mode;
+            const messageBox = document.getElementById("response-message");
+            messageBox.innerText = "";
 
-        const data = await res.json();
-
-        if (res.ok) {
-            // Success response from backend
-            messageBox.innerText = data.message || "Success!";
-        } else {
-            // FastAPI Error (e.g. 422, 500)
-            messageBox.innerText = data.detail || `Server Error (${res.status})`;
+            if (mode === "login") {
+                document.getElementById("loginTab").classList.add("active");
+                document.getElementById("signupTab").classList.remove("active");
+                document.getElementById("submitBtn").innerText = "Sign In";
+            } else {
+                document.getElementById("signupTab").classList.add("active");
+                document.getElementById("loginTab").classList.remove("active");
+                document.getElementById("submitBtn").innerText = "Create Account";
+            }
         }
-    } catch (err) {
-        messageBox.innerText = "Error contacting backend API.";
-    }
-});
+
+        document.getElementById("authForm").addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const messageBox = document.getElementById("response-message");
+            messageBox.innerText = currentMode === "login" ? "Logging in..." : "Creating account...";
+
+            const endpoint = currentMode === "signup" ? "/signup" : "/login";
+
+            try {
+                const res = await fetch(`${BACKEND_URL}${endpoint}`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        username: document.getElementById("username").value,
+                        password: document.getElementById("password").value
+                    })
+                });
+
+                const data = await res.json();
+
+                if (res.ok) {
+                    messageBox.innerText = data.message;
+                    if (currentMode === "signup") {
+                        setTimeout(() => switchMode("login"), 1500);
+                    }
+                } else {
+                    messageBox.innerText = data.detail || `Error (${res.status})`;
+                }
+            } catch (err) {
+                messageBox.innerText = "Error connecting to backend API.";
+            }
+        });
     </script>
 </body>
 </html>
