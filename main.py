@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 import google.generativeai as genai
 from datetime import datetime
+from fastapi.responses import FileResponse
 
 # Load local .env if present
 load_dotenv()
@@ -45,6 +46,11 @@ class LoginRequest(BaseModel):
     password: str
 
 @app.get("/")
+def serve_home():
+    return FileResponse("index.html")
+
+# Create a separate route for API health checks
+@app.get("/api/health")
 def health_check():
     return {"status": "ok", "message": "Backend API is online!"}
 
