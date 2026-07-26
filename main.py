@@ -59,8 +59,8 @@ app = FastAPI()
 # Enable CORS for Vercel Frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://my-ai-project-henna.vercel.app"],
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
